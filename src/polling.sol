@@ -50,8 +50,8 @@ contract Polling is DSMath, Events {
     }
 
     function free(uint256 wad) public {
-        gov.push(msg.sender, wad);
         updateDeposits(deposits[msg.sender], sub(getDeposits(msg.sender), wad));
+        gov.push(msg.sender, wad);
     }
 
     function createPoll(uint48 ttl, bytes32 digest, uint8 hashFunction, uint8 size) 
