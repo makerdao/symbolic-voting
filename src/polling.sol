@@ -4,16 +4,17 @@ pragma solidity ^0.4.24;
 
 import "ds-math/math.sol";
 import "ds-token/token.sol";
+import "./events.sol";
 
 
-contract Polling is DSMath {
+contract Polling is DSMath, Events {
     uint256 public npoll;
     DSToken public   gov; 
 
-    mapping (uint256 => Poll) public polls;    
+    mapping (uint256 => Poll)         public    polls;    
     mapping (address => Checkpoint[]) public deposits;
 
-    // idea credit Aragon Voting app
+    // idea credit Aragon Voting 
     enum VoterStatus { Absent, Yea, Nay }
     
     struct Checkpoint {
@@ -38,26 +39,6 @@ contract Polling is DSMath {
         mapping(address => VoterStatus) votes; 
     }
 
-    event PollCreated(
-        address indexed src, 
-        uint48 start, 
-        uint48 end, 
-        uint32 indexed frozenAt, 
-        uint256 id
-    );
-    event Voted(
-        address indexed src, 
-        uint256 indexed id, 
-        bool indexed yea, 
-        uint256 weight, 
-        bytes logData
-    );
-    event UnSaid(
-        address indexed src, 
-        uint256 indexed id, 
-        uint256 weight
-    );
-
     constructor(DSToken _gov) public { gov = _gov; }
 
     function era() public view returns (uint48) { return uint48(now); }
@@ -73,55 +54,50 @@ contract Polling is DSMath {
         updateDeposits(deposits[msg.sender], sub(getDeposits(msg.sender), wad));
     }
 
-    function pollExists(uint256 _id) public view returns (bool) {
-        return _id < npoll;
-    }
-
-    function pollActive(uint256 _id) public view returns (bool) {
-        return (era() >= polls[_id].start && era() < polls[_id].end);
-    }
-
-    function createPoll(
-        uint48 _ttl,
-        bytes32 _digest, 
-        uint8 _hashFunction, 
-        uint8 _size
-    ) public returns (uint256) {
-        require(_ttl > 0);
-        uint32 _frozenAt = age() - 1;
-        uint48 _start = era();
-        uint48 _end = uint48(add(_start, mul(_ttl, 1 days)));
+    function createPoll(uint48 ttl, bytes32 digest, uint8 hashFunction, uint8 size) 
+        public returns (uint256) 
+    {
+        require(ttl > 0, "poll must be live for at least one day");
+        
         Poll storage poll = polls[npoll];
-        poll.ipfsHash = Multihash(_digest, _hashFunction, _size);
-        poll.frozenAt = _frozenAt;
-        poll.start = _start;
-        poll.end = _end;
+        uint32 _frozenAt  = age() - 1;
+        uint48 _start     = era();
+        uint48 _end       = uint48(add(_start, mul(ttl, 1 days)));
+
+        poll.ipfsHash     = Multihash(digest, hashFunction, size);
+        poll.frozenAt     = _frozenAt;
+        poll.start        = _start;
+        poll.end          = _end;
+
         emit PollCreated(msg.sender, _start, _end, _frozenAt, npoll);
+
         return npoll++;
     }
     
-    function vote(uint256 _id, bool _yea, bytes _logData) public {
-        require(pollExists(_id) && pollActive(_id), "id must be of a valid and active poll");
+    function vote(uint256 id, bool yea, bytes _logData) public {
+        require(pollExists(id) && pollActive(id), "id must be of a valid and active poll");
 
-        Poll storage poll = polls[_id];
+        Poll storage poll = polls[id];
         uint256 weight = depositsAt(msg.sender, poll.frozenAt);
+        require(weight > 0, "must have voting rights for this poll");
 
-        require(weight > 0, "must have voting rights in this poll");
         subWeight(weight, msg.sender, poll);
-        addWeight(weight, msg.sender, poll, _yea);
-        emit Voted(msg.sender, _id, _yea, weight, _logData);
+        addWeight(weight, msg.sender, poll, yea);
+
+        emit Voted(msg.sender, id, yea, weight, _logData);
     }
              
-    function unSay(uint256 _id) public {
-        require(pollExists(_id) && pollActive(_id), "id must be of a valid and active poll");
+    function unSay(uint256 id) public {
+        require(pollExists(id) && pollActive(id), "id must be of a valid and active poll");
 
-        Poll storage poll = polls[_id];
+        Poll storage poll = polls[id];
         uint256 weight = depositsAt(msg.sender, poll.frozenAt);
+        require(weight > 0, "must have voting rights for this poll");
 
-        require(weight > 0, "must have voting rights in this poll");
         subWeight(weight, msg.sender, poll);
         poll.votes[msg.sender] = VoterStatus.Absent;
-        emit UnSaid(msg.sender, _id, weight);
+
+        emit UnSaid(msg.sender, id, weight);
     }
 
     // Internal -----------------------------------------------------
@@ -153,8 +129,8 @@ contract Polling is DSMath {
 
     // Getters ------------------------------------------------------
 
-    function getDeposits(address _guy) public view returns (uint256) {
-        return depositsAt(_guy, age());
+    function getDeposits(address guy) public view returns (uint256) {
+        return depositsAt(guy, age());
     }
 
     // logic adapted from the minime token https://github.com/Giveth/minime –> credit Jordi Baylina
@@ -177,19 +153,29 @@ contract Polling is DSMath {
         return checkpoints[min].value;
     }
 
-    function getPoll(uint256 _id) public view returns (uint48, uint48, uint32, uint256, uint256) {
-        Poll storage poll = polls[_id];
+    function pollExists(uint256 id) public view returns (bool) {
+        return id < npoll;
+    }
+
+    function pollActive(uint256 id) public view returns (bool) {
+        return (era() >= polls[id].start && era() < polls[id].end);
+    }
+
+    function getPoll(uint256 id) 
+        public view returns (uint48, uint48, uint32, uint256, uint256) 
+    {
+        Poll storage poll = polls[id];
         return (poll.start, poll.end, poll.frozenAt, poll.yea, poll.nay);
     }
     
-    function getVoterStatus(uint256 _id, address _guy) public view returns (uint256, uint256) {
-        Poll storage poll = polls[_id];
-        return (uint256(poll.votes[_guy]), depositsAt(_guy, poll.frozenAt));
-        // status codes -> 0 := not voting, 1 := voting yea, 2 := voting nay
+     // status codes -> 0 := not voting, 1 := voting yea, 2 := voting nay
+    function getVoterStatus(uint256 id, address guy) public view returns (uint256, uint256) {
+        Poll storage poll = polls[id];
+        return (uint256(poll.votes[guy]), depositsAt(guy, poll.frozenAt));
     }
 
-    function getMultiHash(uint256 _id) public view returns (bytes32, uint256, uint256) {
-        Multihash storage multihash = polls[_id].ipfsHash;
+    function getMultiHash(uint256 id) public view returns (bytes32, uint256, uint256) {
+        Multihash storage multihash = polls[id].ipfsHash;
         return (multihash.digest, uint256(multihash.hashFunction), uint256(multihash.size));
     }
 }
