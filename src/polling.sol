@@ -38,9 +38,25 @@ contract Polling is DSMath {
         mapping(address => VoterStatus) votes; 
     }
 
-    event PollCreated(address src, uint48 start, uint48 end, uint32 frozenAt, uint256 id);
-    event Voted(address src, uint256 id, bool yea, uint256 weight, bytes logData);
-    event UnSaid(address src, uint256 id, uint256 weight);
+    event PollCreated(
+        address indexed src, 
+        uint48 start, 
+        uint48 end, 
+        uint32 indexed frozenAt, 
+        uint256 id
+    );
+    event Voted(
+        address indexed src, 
+        uint256 indexed id, 
+        bool indexed yea, 
+        uint256 weight, 
+        bytes logData
+    );
+    event UnSaid(
+        address indexed src, 
+        uint256 indexed id, 
+        uint256 weight
+    );
 
     constructor(DSToken _gov) public { gov = _gov; }
 
@@ -108,30 +124,6 @@ contract Polling is DSMath {
         emit UnSaid(msg.sender, _id, weight);
     }
 
-    function getDeposits(address _guy) public view returns (uint256) {
-        return depositsAt(_guy, age());
-    }
-
-    // logic adapted from the minime token https://github.com/Giveth/minime –> credit Jordi Baylina
-    function depositsAt(address _guy, uint256 _block) public view returns (uint) {
-        Checkpoint[] storage checkpoints = deposits[_guy];
-        if (checkpoints.length == 0) return 0;
-        if (_block >= checkpoints[checkpoints.length - 1].fromBlock)
-            return checkpoints[checkpoints.length - 1].value;
-        if (_block < checkpoints[0].fromBlock) return 0;
-        uint256 min = 0;
-        uint256 max = checkpoints.length - 1;
-        while (max > min) {
-            uint256 mid = (max + min + 1) / 2;
-            if (checkpoints[mid].fromBlock <= _block) {
-                min = mid;
-            } else {
-                max = mid - 1;
-            }
-        }
-        return checkpoints[min].value;
-    }
-
     // Internal -----------------------------------------------------
 
     function updateDeposits(Checkpoint[] storage checkpoints, uint256 _value) internal {
@@ -160,6 +152,30 @@ contract Polling is DSMath {
     }
 
     // Getters ------------------------------------------------------
+
+    function getDeposits(address _guy) public view returns (uint256) {
+        return depositsAt(_guy, age());
+    }
+
+    // logic adapted from the minime token https://github.com/Giveth/minime –> credit Jordi Baylina
+    function depositsAt(address _guy, uint256 _block) public view returns (uint) {
+        Checkpoint[] storage checkpoints = deposits[_guy];
+        if (checkpoints.length == 0) return 0;
+        if (_block >= checkpoints[checkpoints.length - 1].fromBlock)
+            return checkpoints[checkpoints.length - 1].value;
+        if (_block < checkpoints[0].fromBlock) return 0;
+        uint256 min = 0;
+        uint256 max = checkpoints.length - 1;
+        while (max > min) {
+            uint256 mid = (max + min + 1) / 2;
+            if (checkpoints[mid].fromBlock <= _block) {
+                min = mid;
+            } else {
+                max = mid - 1;
+            }
+        }
+        return checkpoints[min].value;
+    }
 
     function getPoll(uint256 _id) public view returns (uint48, uint48, uint32, uint256, uint256) {
         Poll storage poll = polls[_id];
