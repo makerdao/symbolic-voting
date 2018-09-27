@@ -22,19 +22,24 @@ contract Voter {
         polling.lock(amt);
     }
 
-    function free(uint amt) public {
-        polling.free(amt);
+    function try_free(uint amt) public returns (bool) {
+        return address(polling).call(abi.encodeWithSignature(
+            "free(uint256)", amt
+        ));
     }
 
-    function vote(uint amt, bool _yea, bytes _logData) public {
-        polling.vote(amt, _yea, _logData);
+    function try_vote(uint amt, uint128 _pick, bytes _logData) public returns (bool) {
+        return address(polling).call(abi.encodeWithSignature(
+            "vote(uint256,uint128,bytes)", amt, _pick, _logData
+        ));
     }
 
-    function unSay(uint id) public {
-        polling.unSay(id);
+    function try_unSay(uint id) public returns (bool) {
+        return address(polling).call(abi.encodeWithSignature(
+            "unSay(uint256)", id
+        ));
     }
 }
-
 
 contract WarpPolling is Polling {
     uint48 _era; uint32 _age;
@@ -72,7 +77,7 @@ contract PollingTest is DSTest {
         dan.lock(100 ether);
         assertEq(gov.balanceOf(dan), 0 ether);
         assertEq(gov.balanceOf(polling), 100 ether);
-        dan.free(100 ether);
+        assertTrue(dan.try_free(100 ether));
         assertEq(gov.balanceOf(dan), 100 ether);
         assertEq(gov.balanceOf(polling), 0 ether);
     }
@@ -80,10 +85,10 @@ contract PollingTest is DSTest {
     function test_create_poll() public {
         dan.approve(100 ether);
         dan.lock(100 ether);
-        uint _id = polling.createPoll(1, digest, hashFunction, size);
-        (, uint48 _end, , uint _votesFor, uint _votesAgainst) = polling.getPoll(_id);
+        uint _id = polling.createPoll(1, 2, digest, hashFunction, size);
+        (, uint48 _end, , uint _votesFor, uint _votesAgainst) = polling.getPoll(_id, 1);
         require(_end == 1 hours + 1 days);
-        assertEq(_votesFor, 0 ether);
+        assertEq(_votesFor,     0 ether);
         assertEq(_votesAgainst, 0 ether);
     }
 
@@ -91,20 +96,20 @@ contract PollingTest is DSTest {
         dan.approve(100 ether);
         dan.lock(100 ether);
         polling.warp(2 hours, 2); 
-        uint _id = polling.createPoll(1, digest, hashFunction, size);
+        uint _id = polling.createPoll(1, 2, digest, hashFunction, size);
         // cast vote
-        dan.vote(_id, true, logData);
-        (, , , uint _votesFor, uint _votesAgainst) = polling.getPoll(_id);
+        assertTrue(dan.try_vote(_id, 1, logData));
+        (, , , uint _votesFor, uint _votesAgainst) = polling.getPoll(_id, 1);
         assertEq(_votesFor, 100 ether);
         assertEq(_votesAgainst, 0 ether);
         // switch vote
-        dan.vote(_id, false, logData);
-        (, , , uint votesFor_, uint votesAgainst_) = polling.getPoll(_id);
+        assertTrue(dan.try_vote(_id, 2, logData));
+        (, , , uint votesFor_, uint votesAgainst_) = polling.getPoll(_id, 1);
         assertEq(votesFor_, 0 ether);
         assertEq(votesAgainst_, 100 ether);
         // withdraw vote
-        dan.unSay(_id);
-        (, , , uint _votesFor_, uint _votesAgainst_) = polling.getPoll(_id);
+        assertTrue(dan.try_unSay(_id));
+        (, , , uint _votesFor_, uint _votesAgainst_) = polling.getPoll(_id, 1);
         assertEq(_votesFor_, 0 ether);
         assertEq(_votesAgainst_, 0 ether);
     }
@@ -116,33 +121,36 @@ contract PollingTest is DSTest {
         dan.lock(25 ether);
         eli.lock(50 ether);
         polling.warp(2 hours, 2); 
-
-        uint _id = polling.createPoll(1, digest, hashFunction, size);
-        dan.vote(_id, true, logData);
-        eli.vote(_id, true, logData);
-        (, , , uint _votesFor, uint _votesAgainst) = polling.getPoll(_id);
+        // basic vote w/ 2 participants
+        uint _id = polling.createPoll(1, 2, digest, hashFunction, size);
+        assertTrue(dan.try_vote(_id, 1, logData));
+        assertTrue(eli.try_vote(_id, 1, logData));
+        (, , , uint _votesFor, uint _votesAgainst) = polling.getPoll(_id, 1);
         assertEq(_votesFor, 75 ether);
         assertEq(_votesAgainst, 0 ether);
-
+        // additional locks aren't in this poll's snapshot
         dan.lock(50 ether);
         polling.warp(12 hours, 12); 
-        dan.vote(_id, false, logData);
-        (, , , uint votesFor_, uint votesAgainst_) = polling.getPoll(_id);
+        assertTrue(dan.try_vote(_id, 2, logData));
+        (, , , uint votesFor_, uint votesAgainst_) = polling.getPoll(_id, 1);
         assertEq(votesFor_, 50 ether);
         assertEq(votesAgainst_, 25 ether);
+        // poll with 10 options
+        uint id_ = polling.createPoll(2, 10, digest, hashFunction, size);
+        assertTrue(dan.try_vote(id_, 1, logData));
+        assertTrue(eli.try_vote(id_, 8, logData));
+        (, , , uint _votesA,) = polling.getPoll(id_, 1);
+        (, , , uint _votesH,) = polling.getPoll(id_, 8);
+        assertEq(_votesA, 75 ether);
+        assertEq(_votesH, 50 ether);
 
-        uint id_ = polling.createPoll(2, digest, hashFunction, size);
-        dan.vote(id_, true, logData);
-        eli.vote(id_, true, logData);
-        (, , , uint _votesFor_, uint _votesAgainst_) = polling.getPoll(id_);
-        assertEq(_votesFor_, 125 ether);
-        assertEq(_votesAgainst_, 0 ether);
-        dan.free(75 ether);
+        assertTrue(dan.try_free(75 ether));
         assertEq(gov.balanceOf(dan), 100 ether);
-        dan.vote(id_, false, logData);
-        (, , , uint __votesFor, uint __votesAgainst) = polling.getPoll(id_);
-        assertEq(__votesFor, 50 ether);
-        assertEq(__votesAgainst, 75 ether);
+        assertTrue(dan.try_vote(id_, 2, logData));
+        (, , , , uint _votesB) = polling.getPoll(id_, 1);
+        (, , , uint votesH_, ) = polling.getPoll(id_, 8);
+        assertEq(votesH_, 50 ether);
+        assertEq(_votesB, 75 ether);
     }
 
     function test_getters() public {
@@ -151,15 +159,15 @@ contract PollingTest is DSTest {
         dan.lock(100 ether);
         eli.lock(100 ether);
         polling.warp(2 hours, 2); 
-        uint _id = polling.createPoll(1, digest, hashFunction, size);
+        uint _id = polling.createPoll(1, 2, digest, hashFunction, size);
         // getVoterStatus
         (uint _voterStatus, uint _deposits) = polling.getVoterStatus(_id, dan);
         assertEq(_voterStatus, 0); // absent 
         assertEq(_deposits, 100 ether);
-        dan.vote(_id, true, logData);
+        assertTrue(dan.try_vote(_id, 1, logData));
         (uint voterStatus_, ) = polling.getVoterStatus(_id, dan);
         assertEq(voterStatus_, 1); // yea
-        dan.vote(_id, false, logData);
+        assertTrue(dan.try_vote(_id, 2, logData));
         (uint _voterStatus_, ) = polling.getVoterStatus(_id, dan);
         assertEq(_voterStatus_, 2); // nay
 
@@ -175,53 +183,65 @@ contract PollingTest is DSTest {
         assertEq(__deposits, 0);
     }
 
-    function testFail_poll_expires_vote() public {
+    // Failure Cases ------------------------------------------------
+
+    function test_fail_poll_expires_vote() public {
         dan.approve(100 ether);
         dan.lock(100 ether);
-        uint _id = polling.createPoll(1, digest, hashFunction, size);
+        uint _id = polling.createPoll(1, 2, digest, hashFunction, size);
         polling.warp(2 days, 2); 
-        dan.vote(_id, true, logData);
+        assertTrue(!dan.try_vote(_id, 1, logData));
     }
 
-    function testFail_poll_expires_unsay() public {
+    function test_fail_poll_expires_unsay() public {
         dan.approve(100 ether);
         dan.lock(100 ether);
-        uint _id = polling.createPoll(1, digest, hashFunction, size);
+        uint _id = polling.createPoll(1, 2, digest, hashFunction, size);
         polling.warp(2 days, 2); 
-        dan.unSay(_id);
+        assertTrue(!dan.try_unSay(_id));
     }
 
-    function testFail_fake_poll_vote() public {
+    function test_fail_fake_poll_vote() public {
         dan.approve(100 ether);
         dan.lock(100 ether);
         polling.warp(2 hours, 2); 
-        polling.createPoll(1, digest, hashFunction, size);
-        dan.vote(200, true, logData);
+        polling.createPoll(1, 2, digest, hashFunction, size);
+        assertTrue(!dan.try_vote(200, 1, logData));
     }
 
-    function testFail_fake_poll_unsay() public {
+    function test_fail_fake_poll_unsay() public {
         dan.approve(100 ether);
         dan.lock(100 ether);
         polling.warp(2 hours, 2); 
-        polling.createPoll(1, digest, hashFunction, size);
-        dan.unSay(200);
+        polling.createPoll(1, 2, digest, hashFunction, size);
+        assertTrue(!dan.try_unSay(200));
     }
 
-    function testFail_free_too_much() public {
+    function test_fail_free_too_much() public {
         dan.approve(100 ether);
         eli.approve(100 ether);
         dan.lock(50 ether);
         eli.lock(50 ether);
-        dan.free(51 ether);
+        assertTrue(!dan.try_free(51 ether));
     }
 
-    function testFail_free_too_much_warp() public {
+    function test_fail_free_too_much_warp() public {
         dan.approve(100 ether);
         eli.approve(100 ether);
         dan.lock(50 ether);
         eli.lock(50 ether);
         polling.warp(100 days, 1000); 
-        dan.free(51 ether);
+        assertTrue(!dan.try_free(51 ether));
+    }
+
+    function test_fail_pick_out_of_range() public {
+        dan.approve(100 ether);
+        dan.lock(100 ether);
+        polling.warp(2 hours, 2); 
+        uint _id = polling.createPoll(1, 2, digest, hashFunction, size);
+        assertTrue( dan.try_vote(_id, 1, logData));
+        assertTrue( dan.try_vote(_id, 2, logData));
+        assertTrue(!dan.try_vote(_id, 3, logData));
     }
 }
 

@@ -3,7 +3,8 @@ pragma solidity ^0.4.24;
 
 contract Events {
     event PollCreated(
-        address indexed src, 
+        address indexed     src, 
+        uint128 indexed choices,
         uint48 start, 
         uint48 end, 
         uint32 indexed frozenAt, 
@@ -13,7 +14,7 @@ contract Events {
     event Voted(
         address indexed src, 
         uint256 indexed id, 
-        bool indexed yea, 
+        uint256 indexed pick, 
         uint256 weight, 
         bytes logData
     );
