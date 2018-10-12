@@ -112,9 +112,8 @@ contract Polling is DSMath, Events {
     }
 
     function subWeight(uint256 _weight, address _guy, Poll storage poll) internal {
-        if (poll.votes[_guy] != 0) {
+        if (poll.votes[_guy] != 0) 
             poll.tally[poll.votes[_guy]] = sub(poll.tally[poll.votes[_guy]], _weight);
-        }
     }
 
     function addWeight(uint256 _weight, address _guy, Poll storage poll, uint128 _pick) internal {
@@ -129,7 +128,7 @@ contract Polling is DSMath, Events {
     }
 
     // logic adapted from the minime token https://github.com/Giveth/minime –> credit Jordi Baylina
-    function depositsAt(address _guy, uint256 _block) public view returns (uint) {
+    function depositsAt(address _guy, uint256 _block) public view returns (uint256) {
         Checkpoint[] storage checkpoints = deposits[_guy];
         if (checkpoints.length == 0) return 0;
         if (_block >= checkpoints[checkpoints.length - 1].fromBlock)
