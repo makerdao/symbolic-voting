@@ -11,7 +11,31 @@ contract ResolveLike {
     function canSpeakFor(address, address) public view returns (bool);
 }
 
-contract Polling is DSMath, DSAuth {
+contract PollingEvents {
+    event PollCreated(
+        uint256 id, 
+        uint128 indexed numChoices, 
+        uint64 start,
+        uint64 end, 
+        address indexed creator, 
+        string multiHash
+    );
+
+    event PollWithdrawn(
+        uint256 id, 
+        address indexed creator, 
+        uint256 timestamp
+    );
+
+    event Voted(
+        address indexed lad, 
+        uint256 indexed id, 
+        uint128 indexed pick, 
+        bytes logData
+    );
+}
+
+contract Polling is DSMath, DSAuth, PollingEvents {
     string constant public VERSION = "0.1.0-alpha";
     string public rules; 
     
@@ -33,13 +57,6 @@ contract Polling is DSMath, DSAuth {
         mapping(address => uint128) votes; 
         mapping(address => uint256) indices;
     }
-
-    event PollCreated(
-        uint256 id, uint128 indexed numChoices, uint64 start,
-        uint64 end, address indexed creator, string multiHash
-    );
-    event PollWithdrawn(uint256 id, address indexed creator, uint256 timestamp);
-    event Voted(address indexed lad, uint256 indexed id, uint128 indexed pick, bytes logData);
 
     constructor(DSToken _gov, DSToken _iou, address _resolver, string _rules) public 
         { gov = _gov; iou = _iou; resolver = _resolver; rules = _rules; }
@@ -69,8 +86,7 @@ contract Polling is DSMath, DSAuth {
     }
 
     function vote(address lad, uint256 id, uint128 pick, bytes logData) public {
-        require(
-            ResolveLike(resolver).canSpeakFor(msg.sender, lad), 
+        require(ResolveLike(resolver).canSpeakFor(msg.sender, lad), 
             "couldn't prove ownership of prospective address"
         );
         _vote(lad, id, pick, logData);
@@ -78,9 +94,8 @@ contract Polling is DSMath, DSAuth {
 
     function _vote(address lad, uint256 id, uint128 pick, bytes logData) internal {
         require(isValidPoll(id) && pollActive(id), "id must be of a valid and active poll");
-        require(
-            gov.balanceOf(lad) > 0.005 ether || iou.balanceOf(lad) > 0.005 ether, 
-            "voter must have more than 0.005 GOV or IOU"
+        require(gov.balanceOf(lad) > 0.005 ether || iou.balanceOf(lad) > 0.005 ether, 
+             "voter must have more than 0.005 GOV or IOU"
         );
 
         Poll storage poll = polls[id];
@@ -111,13 +126,11 @@ contract Polling is DSMath, DSAuth {
 
     // Views ------------------------------------------------------------------
 
-    function isValidPoll(uint256 id) public view returns (bool) {
-        return (id < npoll && !polls[id].withdrawn);
-    }
+    function isValidPoll(uint256 id) public view returns (bool) 
+        { return (id < npoll && !polls[id].withdrawn); }
 
-    function pollActive(uint256 id) public view returns (bool) {
-        return (now >= polls[id].start && now <= polls[id].end);
-    }
+    function pollActive(uint256 id) public view returns (bool) 
+        { return (now >= polls[id].start && now <= polls[id].end); }
 
     function getPollParams(uint256 id)
         public view returns (uint64, uint64, uint128, bool, address) 
@@ -126,19 +139,15 @@ contract Polling is DSMath, DSAuth {
         return (poll.start, poll.end, poll.numChoices, poll.withdrawn, poll.creator);
     }
 
-    function getMultiHash(uint256 id) public view returns (string) {
-        return polls[id].documentHash;
-    }
+    function getMultiHash(uint256 id) public view returns (string) 
+        { return polls[id].documentHash; }
 
-    function checkVote(uint256 id, address lad) public view returns (uint128) {
-        return polls[id].votes[lad];
-    }
+    function checkVote(uint256 id, address lad) public view returns (uint128) 
+        { return polls[id].votes[lad]; }
 
-    function getVoter(uint256 id, uint256 index) public view returns (address) {
-        return polls[id].voters[index];
-    }
+    function getVoter(uint256 id, uint256 index) public view returns (address) 
+        { return polls[id].voters[index]; }
 
-    function getVoterCount(uint256 id) public view returns (uint256) {
-        return polls[id].voters.length;
-    }
+    function getVoterCount(uint256 id) public view returns (uint256) 
+        { return polls[id].voters.length; }
 }
