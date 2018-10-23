@@ -1,47 +1,30 @@
 pragma solidity ^0.4.24;
 
-// import "./polling.sol";
-// import "ds-guard/guard.sol";
+import "./polling.sol";
+import "./vote-proxy-resolver.sol";
 
-// contract PollingAuthority is DSAuth {
-//     Polling polling;
-//     constructor(Polling _polling) { polling = _polling; }
-//     function setTTL(uint48 _ttl) { polling.setTTL(_ttl); }
-//     function setDelay(uint48 _delay) { polling.setDelay(_delay); }
-// }
+import "ds-guard/guard.sol";
 
-// contract PollingSingleUseFab {
-//     Polling polling;
-//     DSRoles   roles;
-//     PollingAuthority pollingAuthority;
+contract PollingSingleUseFab {
+    Resolver resolver;
+    Polling   polling;
+    DSGuard     guard;
+    DSToken       gov;
+    DSToken       iou;
 
-//     function newPolling(DSToken _gov) public returns (address) {
-//         uint8 timingRole = 0;
-// 		uint8 pollCreatorRole = 1;
+    constructor(address voteProxyFactory, DSToken _gov, DSToken _iou) {
+        resolver = new Resolver(voteProxyFactory);
+        gov = _gov;
+        iou = _iou;
+    }
 
-//         pollingAuthority = new PollingAuthority();
-//         polling = new Polling(_gov);
-//         roles = new DSRoles();
-
-//         polling.setDelay(7 days);
-//         polling.setTTL(7 days);
-
-//         guard.setOwner(msg.sender);
-//         polling.setAuthority(guard);
-
-//         roles.setUserRole(pollingAuthority, timingRole, true);
-//         roles.setRoleCapability(
-//             pollingAuthority, polling, bytes4(keccak256("setDelay(uint48)")), true
-//         );
-//         roles.setRoleCapability(
-//             pollingAuthority, polling, bytes4(keccak256("setTTL(uint48)")), true
-//         );
-
-// 		roles.setUserRole(this, pollCreatorRole, true);
-//         roles.setRoleCapability(
-//             pollCreatorRole, polling, bytes4(keccak256("createPoll(uint128,bytes32,uint8,uint8)")), true
-//         );
-
-//         return polling;
-//     }
-// }
+    function newPolling(address[] lads, string rules) public returns (address) {
+        polling = new Polling(gov, iou, resolver, rules);
+        guard   = new DSGuard();
+        for (uint256 i = 0; i < lads.length; i++) 
+            guard.permit(lads[i], polling, bytes4(keccak256("createPoll(uint128,uint64,uint64,string)")));
+        guard.setOwner(msg.sender);
+        polling.setAuthority(guard);
+        return polling;
+    }
+}
