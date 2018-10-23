@@ -1,3 +1,5 @@
+// VoteProxyResolver – determine if a caller is the owner of a vote-proxy
+
 pragma solidity ^0.4.24;
 
 contract ProxyFactoryLike {
@@ -5,7 +7,7 @@ contract ProxyFactoryLike {
     function hotMap (address) public returns (address);
 }
 
-contract Resolver {
+contract VoteProxyResolver {
     ProxyFactoryLike proxyFactory;
     constructor(address _proxyFactory) public { proxyFactory = ProxyFactoryLike(_proxyFactory); }
     function canSpeakFor(address caller, address prospect) public returns (bool) {

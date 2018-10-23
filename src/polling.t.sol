@@ -3,11 +3,21 @@ pragma solidity ^0.4.24;
 import "ds-test/test.sol";
 import "ds-token/token.sol";
 
+import "./fab.sol";
 import "./polling.sol";
+import "./_vote-proxy-factory.sol";
 
 contract Voter {
     Polling polling;
-    constructor(Polling _polling) public { polling = _polling; }
+    VoteProxyFactory voteProxyFactory;
+    
+    function setPolling(Polling _polling) { polling = _polling; }
+
+    function getPollParams(uint256 _id)
+        public view returns (uint256, uint256, uint256, bool, address) 
+    {
+        return polling.getPollParams(_id);
+    }
 
     function createPoll(uint128 _numChoices, uint64 _delay, uint64 _ttl, string _multiHash) 
         public returns (uint256) 
@@ -15,10 +25,18 @@ contract Voter {
         return polling.createPoll(_numChoices, _delay, _ttl, _multiHash);
     }
 
-    function getPollParams(uint256 _id)
-        public view returns (uint256, uint256, uint256, bool, address) 
+    function try_withdrawPoll(uint256 _id) public returns (bool) {
+        return address(polling).call(abi.encodeWithSignature(
+            "withdraw(uint256)", _id
+        ));
+    }
+
+    function try_createPoll(uint128 _numChoices, uint64 _delay, uint64 _ttl, string _multiHash) 
+        public returns (bool) 
     {
-        return polling.getPollParams(_id);
+        return address(polling).call(abi.encodeWithSignature(
+            "createPoll(uint128,uint64,uint64,string)", _numChoices, _delay, _ttl, _multiHash
+        ));
     }
 
     function try_vote(uint _id, uint128 _pick, bytes _logData) public returns (bool) {
@@ -32,12 +50,13 @@ contract Voter {
             "vote(address,uint256,uint128,bytes)", _lad, _id, _pick, _logData
         ));
     }
-}
 
-contract Resolver {
-    function canSpeakFor(address caller, address prospect) public view returns (bool) {
-        return true;
-    }
+    // for proxy voting tests -------------------------------------------------
+    function setProxyFactory(VoteProxyFactory _voteProxyFactory) 
+        { voteProxyFactory = _voteProxyFactory; }
+    function initiateLink(address hot) public { voteProxyFactory.initiateLink(hot); }
+    function approveLink(address cold) public returns (VoteProxy) { return voteProxyFactory.approveLink(cold); }
+    // ------------------------------------------------------------------------
 }
 
 contract Hevm {
@@ -47,31 +66,53 @@ contract Hevm {
 contract PollingTest is DSTest {
     bytes constant LOG_DATA = new bytes(1);
 
-    Hevm hevm;
-    Polling polling;
+    PollingSingleUseFab pollingFab;
+    VoteProxyFactory voteProxyFactory;
 
+    Polling polling;
     DSToken gov;
     DSToken iou;
+    Hevm hevm;
     Voter dan;
     Voter eli;
+    Voter ned;
 
     function setUp() public {
-        // HEVM cheat -> can set the block timestamp
+        // HEVM cheat -> set the block timestamp
         hevm = Hevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
         hevm.warp(100);
 
         gov = new DSToken("GOV");
         iou = new DSToken("IOU");
-        gov.mint(200 ether);
+        gov.mint(400 ether);
 
-        polling = new Polling(gov, iou, new Resolver(), "");
+        // from _vote-proxy-factory contracts imported for testing ------------
+        DSChiefFab dsChiefFab = new DSChiefFab();
+        voteProxyFactory = new VoteProxyFactory(dsChiefFab.newChief(gov, 5));
+        // --------------------------------------------------------------------
 
-        dan = new Voter(polling);
-        eli = new Voter(polling);
+        pollingFab = new PollingSingleUseFab(voteProxyFactory, gov, iou);
+
+        dan = new Voter();
+        eli = new Voter();
+        ned = new Voter();
         gov.transfer(dan, 100 ether);
         gov.transfer(eli, 100 ether);
+        gov.transfer(ned, 100 ether);
 
-        polling.setOwner(dan);
+        address[] memory pollCreators = new address[](2);
+        pollCreators[0] = dan;
+        pollCreators[1] = eli;
+        polling = pollingFab.newPolling(pollCreators, "");
+        dan.setPolling(polling); 
+        eli.setPolling(polling); 
+        ned.setPolling(polling);
+
+        // from _vote-proxy-factory contracts imported for testing ------------
+        dan.setProxyFactory(voteProxyFactory); 
+        eli.setProxyFactory(voteProxyFactory); 
+        ned.setProxyFactory(voteProxyFactory);
+        // --------------------------------------------------------------------
     }
 
     function test_create_polls() public {
@@ -79,6 +120,7 @@ contract PollingTest is DSTest {
         uint256 id = dan.createPoll(2, 0, 1 days, "multiHash");
         assertEq(polling.npoll(), 1);
         assertEq(id, 0);
+        assertEq(polling.npoll(), 1);
 
         uint256 _id = dan.createPoll(100, 0, 1 days, "multiHash");
         assertEq(polling.npoll(), 2);
@@ -143,19 +185,58 @@ contract PollingTest is DSTest {
         assertEq(polling.getVoter(id, 1), eli);
         assertEq(uint256(polling.checkVote(id, eli)), 2);
 
+        // ned can vote, too :)
+        assertTrue(ned.try_vote(id, 2, new bytes(0)));
+        assertEq(polling.getVoter(id, 2), ned);
+        assertEq(polling.getVoterCount(id), 3); 
+
         // dan decides to abstain
         assertTrue(dan.try_vote(id, 0, new bytes(0)));
-        assertEq(polling.getVoter(id, 0), dan);
         assertEq(uint256(polling.checkVote(id, dan)), 0); 
+        assertEq(polling.getVoterCount(id), 2);
+        assertEq(polling.getVoter(id, 0), ned); // ned moves to dan's position
+        assertEq(polling.getVoter(id, 1), eli); // eli remains
+
+        // dan decides to vote for option 1 again
+        assertTrue(dan.try_vote(id, 1, new bytes(0)));
+        assertEq(uint256(polling.checkVote(id, dan)), 1); 
+        assertEq(polling.getVoterCount(id), 3);
+        assertEq(polling.getVoter(id, 0), ned);
+        assertEq(polling.getVoter(id, 1), eli);
+        assertEq(polling.getVoter(id, 2), dan);
+
+        // now eli abstains
+        assertTrue(eli.try_vote(id, 0, new bytes(0)));
+        assertEq(uint256(polling.checkVote(id, eli)), 0); 
+        assertEq(polling.getVoterCount(id), 2);
+        assertEq(polling.getVoter(id, 0), ned); 
+        assertEq(polling.getVoter(id, 1), dan); // dan moves to eli's position
     }
 
     function test_proxy_voting() public {
+        // from imported proxy factory contracts ------------------------------
+        dan.initiateLink(eli);
+        VoteProxy voteProxy = eli.approveLink(dan);
+        gov.transfer(voteProxy, 100 ether);
+        // --------------------------------------------------------------------
+
         // create a poll with 2 options: "1" & "2"
         uint id = dan.createPoll(2, 0, 1 days, "multiHash");
-        assertTrue(dan.try_vote(eli, id, 2, new bytes(0)));
-        assertEq(polling.getVoter(id, 0), eli);
-        assertEq(uint256(polling.checkVote(id, eli)), 2);
+
+        // dan can speak for the proxy
+        assertTrue(dan.try_vote(voteProxy, id, 2, new bytes(0)));
+        assertEq(polling.getVoter(id, 0), voteProxy);
+        assertEq(uint256(polling.checkVote(id, voteProxy)), 2);
         assertEq(polling.getVoterCount(id), 1); 
+
+        // eli can speak for the proxy
+        assertTrue(eli.try_vote(voteProxy, id, 1, new bytes(0)));
+        assertEq(polling.getVoter(id, 0), voteProxy);
+        assertEq(uint256(polling.checkVote(id, voteProxy)), 1);
+        assertEq(polling.getVoterCount(id), 1); 
+
+        // ned cannot speak for the proxy
+        assertTrue(!ned.try_vote(voteProxy, id, 1, new bytes(0)));
     }
 
     // Failure cases --------------------------------------
@@ -195,6 +276,42 @@ contract PollingTest is DSTest {
         // can't vote after a poll has ended
         hevm.warp(11 days);
         assertTrue(!dan.try_vote(id, 1, new bytes(0)));
+    }
+
+    function test_fail_poll_creator_auth() {
+        // dan was given auth
+        assertTrue(dan.try_createPoll(2, 0, 1 days, "multiHash"));
+        // ned wasn't given auth
+        assertTrue(!ned.try_createPoll(2, 0, 1 days, "multiHash"));
+        // eli was given auth
+        assertTrue(eli.try_createPoll(2, 0, 1 days, "multiHash"));
+    }
+
+    function test_fail_vote_withdrawn_poll() {
+        // set block timestamp to 0
+        hevm.warp(0);
+
+        // this poll starts in 5 days and expires in 10
+        uint id = dan.createPoll(2, 5 days, 5 days, "multiHash");
+        // only the poll creator can withdraw
+        assertTrue(!eli.try_withdrawPoll(id));
+        assertTrue(dan.try_withdrawPoll(id));
+
+        // warp to a valid voting period
+        hevm.warp(6 days);
+        // nobody can vote on this poll since it's been withdrawn
+        assertTrue(!dan.try_vote(id, 1, new bytes(0)));
+        assertTrue(!eli.try_vote(id, 1, new bytes(0)));
+    }
+
+    function test_fail_internal_voting_function() {
+        uint id = dan.createPoll(2, 0, 1 days, "multiHash");
+        assertTrue(address(polling).call(abi.encodeWithSignature(
+            "vote(uint256,uint128,bytes)", id, 1, new bytes(0)
+        )));
+        assertTrue(!address(polling).call(abi.encodeWithSignature(
+            "_vote(address,uint256,uint128,bytes)", this, id, 1, new bytes(0)
+        )));
     }
 }
 

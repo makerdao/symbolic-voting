@@ -87,7 +87,7 @@ contract Polling is DSMath, DSAuth {
         require(pick <= poll.numChoices, "pick must be within the choice range");
 
         // push voter onto the voter array if they're voting
-        if (pick > 0 && poll.votes[lad] == 0) poll.indices[lad] = poll.voters.push(lad);
+        if (pick > 0 && poll.votes[lad] == 0) poll.indices[lad] = poll.voters.push(lad) - 1;
         // pop voter from the voter array if they're now abstaining
         else if (pick == 0 && poll.votes[lad] > 0) {
             poll.voters[poll.indices[lad]] = poll.voters[poll.voters.length - 1];
@@ -104,12 +104,12 @@ contract Polling is DSMath, DSAuth {
         require(isValidPoll(id), "id must be of a valid poll");
         Poll storage poll = polls[id];
         require(poll.creator == msg.sender, "poll must be withdrawn by its creator");
-        require(poll.start < now, "poll can't be withdrawn after it has started");
+        require(poll.start > now, "poll can't be withdrawn after it has started");
         poll.withdrawn = true;
         emit PollWithdrawn(id, msg.sender, now);
     }
 
-    // Views ----------------------------------------------
+    // Views ------------------------------------------------------------------
 
     function isValidPoll(uint256 id) public view returns (bool) {
         return (id < npoll && !polls[id].withdrawn);
