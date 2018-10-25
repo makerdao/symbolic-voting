@@ -91,7 +91,7 @@ contract PollingTest is DSTest {
         voteProxyFactory = new VoteProxyFactory(dsChiefFab.newChief(gov, 5));
         // --------------------------------------------------------------------
 
-        pollingFab = new PollingSingleUseFab(voteProxyFactory, gov, iou);
+        pollingFab = new PollingSingleUseFab(voteProxyFactory, gov);
 
         dan = new Voter();
         eli = new Voter();

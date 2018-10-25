@@ -42,7 +42,6 @@ contract Polling is DSMath, DSAuth, PollingEvents {
     address public resolver;
     uint256 public    npoll;
     DSToken public      gov; 
-    DSToken public      iou; 
 
     mapping (uint256 => Poll) public polls;    
 
@@ -58,8 +57,8 @@ contract Polling is DSMath, DSAuth, PollingEvents {
         mapping(address => uint256) indices;
     }
 
-    constructor(DSToken _gov, DSToken _iou, address _resolver, string _rules) public 
-        { gov = _gov; iou = _iou; resolver = _resolver; rules = _rules; }
+    constructor(DSToken _gov, address _resolver, string _rules) public 
+        { gov = _gov; resolver = _resolver; rules = _rules; }
 
     function createPoll(uint128 numChoices, uint64 delay, uint64 ttl, string multiHash) 
         public auth returns (uint256) 
@@ -94,9 +93,7 @@ contract Polling is DSMath, DSAuth, PollingEvents {
 
     function _vote(address lad, uint256 id, uint128 pick, bytes logData) internal {
         require(isValidPoll(id) && pollActive(id), "id must be of a valid and active poll");
-        require(gov.balanceOf(lad) > 0.005 ether || iou.balanceOf(lad) > 0.005 ether, 
-             "voter must have more than 0.005 GOV or IOU"
-        );
+        require(gov.balanceOf(lad) > 0.005 ether, "voter must have more than 0.005 GOV");
 
         Poll storage poll = polls[id];
         require(pick <= poll.numChoices, "pick must be within the choice range");

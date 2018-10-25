@@ -1,9 +1,5 @@
 This repository contains a general voting contract designed to be the community polling counterpart to [ds-chief](https://github.com/dapphub/ds-chief)
 
-## Requirements and design considerations
+## Scheme
 
-https://makerdao.atlassian.net/wiki/spaces/MGV/pages/468910091/Symbolic+Voting
-
-## Proposed integration with a proxy voting contract & DS chief
-
-![Vote Proxy](vote-proxy.png)
+A running tally for each individual poll is not kept on-chain. Instead, voters' addresses and votes are registered, and the token-weighted tallying is done and verified off-chain
