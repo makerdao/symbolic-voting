@@ -1,4 +1,4 @@
-// PollingSingleUseFab – create a polling system and store relevant values for auditability 
+// PollingSingleUseFab – create a polling system and store relevant values for auditability
 
 pragma solidity ^0.4.24;
 
@@ -12,18 +12,16 @@ contract PollingSingleUseFab {
     Polling   polling;
     DSGuard     guard;
     DSToken       gov;
-    DSToken       iou;
 
-    constructor(address voteProxyFactory, DSToken _gov, DSToken _iou) {
+    constructor(address voteProxyFactory, DSToken _gov) {
         resolver = new VoteProxyResolver(voteProxyFactory);
         gov = _gov;
-        iou = _iou;
     }
 
     function newPolling(address[] lads, string rules) public returns (Polling) {
-        polling = new Polling(gov, iou, resolver, rules);
+        polling = new Polling(gov, resolver, rules);
         guard   = new DSGuard();
-        for (uint256 i = 0; i < lads.length; i++) 
+        for (uint256 i = 0; i < lads.length; i++)
             guard.permit(lads[i], polling, bytes4(keccak256("createPoll(uint128,uint64,uint64,string)")));
         polling.setAuthority(guard);
         guard.setOwner(msg.sender);
