@@ -8,25 +8,27 @@ import "./vote-proxy-resolver.sol";
 import "ds-guard/guard.sol";
 
 contract PollingSingleUseFab {
-    address  resolver;
-    Polling   polling;
-    DSGuard     guard;
-    DSToken       gov;
-    DSToken       iou;
+    address public resolver;
+    PollingEmitter public pollingEmitter;
+    PollingGuard public pollingGuard;
+    DSGuard public guard;
+    DSToken public gov;
 
-    constructor(address voteProxyFactory, DSToken _gov, DSToken _iou) {
+    constructor(address voteProxyFactory, DSToken _gov) {
         resolver = new VoteProxyResolver(voteProxyFactory);
         gov = _gov;
-        iou = _iou;
     }
 
-    function newPolling(address[] lads, string rules) public returns (Polling) {
-        polling = new Polling(gov, iou, resolver, rules);
-        guard   = new DSGuard();
+    function newPolling(address[] lads) public returns (PollingEmitter, PollingGuard) {
+        pollingEmitter = new PollingEmitter();
+        pollingGuard = new PollingGuard(gov, pollingEmitter, resolver);
+        pollingEmitter.rely(pollingGuard);
+        pollingEmitter.deny(this);
+        guard = new DSGuard();
         for (uint256 i = 0; i < lads.length; i++) 
-            guard.permit(lads[i], polling, bytes4(keccak256("createPoll(uint128,uint64,uint64,string)")));
-        polling.setAuthority(guard);
+            guard.permit(lads[i], pollingGuard, bytes4(keccak256("createPoll(uint128,uint64,uint64,string)")));
+        pollingGuard.setAuthority(guard);
         guard.setOwner(msg.sender);
-        return polling;
+        return (pollingEmitter, pollingGuard);
     }
 }

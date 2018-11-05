@@ -1,15 +1,8 @@
-// Polling – create expiring straw polls 
-
 pragma solidity ^0.4.24;
 
 import "ds-token/token.sol";
 import "ds-math/math.sol";
 import "ds-auth/auth.sol";
-
-
-contract ResolveLike { 
-    function canSpeakFor(address, address) public view returns (bool);
-}
 
 contract PollingEvents {
     event PollCreated(
@@ -26,7 +19,7 @@ contract PollingEvents {
         address indexed creator, 
         uint256 timestamp
     );
-
+    
     event Voted(
         address indexed lad, 
         uint256 indexed id, 
@@ -35,13 +28,35 @@ contract PollingEvents {
     );
 }
 
-contract Polling is DSMath, DSAuth, PollingEvents {
+// canonical event emitter 
+contract PollingEmitter is PollingEvents, DSNote {
+    mapping (address => uint256) public wards;
+    function rely(address guy) public note auth { wards[guy] = 1; }
+    function deny(address guy) public note auth { wards[guy] = 0; }
+    modifier auth { require(wards[msg.sender] == 1); _; }
+
+    function createPoll(uint256 id, uint128 numChoices, uint64 start, uint64 end, string multiHash) 
+        public view auth { emit PollCreated(id, numChoices, start, end, msg.sender, multiHash); }
+
+    function vote(address lad, uint256 id, uint128 pick, bytes logData) 
+        public view auth { emit Voted(lad, id, pick, logData); }
+
+    function withdraw(uint256 id) 
+        public view auth { emit PollWithdrawn(id, msg.sender, now); }
+}
+
+contract ResolveLike { 
+    function canSpeakFor(address, address) public view returns (bool);
+}
+
+// emitter access control; upgradable 
+contract PollingGuard is DSAuth, DSMath {
     string constant public VERSION = "0.1.0-alpha";
-    string public rules; 
-    
-    address public resolver;
-    uint256 public    npoll;
-    DSToken public      gov; 
+
+    PollingEmitter public polling;
+    address public       resolver;
+    uint256 public          npoll;
+    DSToken public            gov; 
 
     mapping (uint256 => Poll) public polls;    
 
@@ -51,38 +66,30 @@ contract Polling is DSMath, DSAuth, PollingEvents {
         uint128 numChoices;
         bool withdrawn;
         address creator;
-        address[] voters;
-        string documentHash;
-        mapping(address => uint128) votes; 
-        mapping(address => uint256) indices;
     }
 
-    constructor(DSToken _gov, address _resolver, string _rules) public 
-        { gov = _gov; resolver = _resolver; rules = _rules; }
+    constructor(DSToken _gov, PollingEmitter _polling, address _resolver) 
+        public { gov = _gov; polling = _polling; resolver = _resolver; }
 
     function createPoll(uint128 numChoices, uint64 delay, uint64 ttl, string multiHash) 
         public auth returns (uint256) 
     {
-        Poll storage poll = polls[npoll];
-
         require(ttl > 0, "poll must have a valid voting period");
+        Poll storage poll = polls[npoll];
         uint64 _start = uint64(add(delay, now ));
         uint64 _end   = uint64(add(_start, ttl));
 
-        poll.documentHash = multiHash;
-        poll.numChoices   = numChoices;
-        poll.creator      = msg.sender;
-        poll.start        = _start;
-        poll.end          = _end;
+        poll.numChoices = numChoices;
+        poll.creator    = msg.sender;
+        poll.start      = _start;
+        poll.end        = _end;
 
-        emit PollCreated(npoll, numChoices, _start, _end, msg.sender, multiHash);
-
+        polling.createPoll(npoll, numChoices, _start, _end, multiHash);
         return npoll++;
     }
 
-    function vote(uint256 id, uint128 pick, bytes logData) public {
-        _vote(msg.sender, id, pick, logData);
-    }
+    function vote(uint256 id, uint128 pick, bytes logData) 
+        public { _vote(msg.sender, id, pick, logData); }
 
     function vote(address lad, uint256 id, uint128 pick, bytes logData) public {
         require(ResolveLike(resolver).canSpeakFor(msg.sender, lad), 
@@ -91,60 +98,25 @@ contract Polling is DSMath, DSAuth, PollingEvents {
         _vote(lad, id, pick, logData);
     }
 
-    function _vote(address lad, uint256 id, uint128 pick, bytes logData) internal {
-        require(isValidPoll(id) && pollActive(id), "id must be of a valid and active poll");
-        require(gov.balanceOf(lad) > 0.005 ether, "voter must have more than 0.005 GOV");
-
+    function _vote(address lad, uint256 id, uint128 pick, bytes logData) internal view {
         Poll storage poll = polls[id];
+
+        require(id < npoll && !poll.withdrawn,  "id must be of a valid poll");
+        require(now >= poll.start && now <= poll.end, "id must be of an active poll");
+        require(gov.balanceOf(lad) > 0.005 ether, "voter must have more than 0.005 GOV");
         require(pick <= poll.numChoices, "pick must be within the choice range");
 
-        // push voter onto the voter array if they're voting
-        if (pick > 0 && poll.votes[lad] == 0) poll.indices[lad] = poll.voters.push(lad) - 1;
-        // pop voter from the voter array if they're now abstaining
-        else if (pick == 0 && poll.votes[lad] > 0) {
-            poll.voters[poll.indices[lad]] = poll.voters[poll.voters.length - 1];
-            poll.indices[poll.voters[poll.voters.length - 1]] = poll.indices[lad];
-            poll.voters.length--;
-            delete poll.indices[lad];
-        }
-
-        poll.votes[lad] = pick;
-        emit Voted(lad, id, pick, logData);
+        polling.vote(lad, id, pick, logData);
     }
 
     function withdraw(uint256 id) public {
-        require(isValidPoll(id), "id must be of a valid poll");
         Poll storage poll = polls[id];
+
+        require(id < npoll && !poll.withdrawn,  "id must be of a valid poll");
         require(poll.creator == msg.sender, "poll must be withdrawn by its creator");
         require(poll.start > now, "poll can't be withdrawn after it has started");
+
         poll.withdrawn = true;
-        emit PollWithdrawn(id, msg.sender, now);
+        polling.withdraw(id);
     }
-
-    // Views ------------------------------------------------------------------
-
-    function isValidPoll(uint256 id) public view returns (bool) 
-        { return (id < npoll && !polls[id].withdrawn); }
-
-    function pollActive(uint256 id) public view returns (bool) 
-        { return (now >= polls[id].start && now <= polls[id].end); }
-
-    function getPollParams(uint256 id)
-        public view returns (uint64, uint64, uint128, bool, address) 
-    {
-        Poll storage poll = polls[id];
-        return (poll.start, poll.end, poll.numChoices, poll.withdrawn, poll.creator);
-    }
-
-    function getMultiHash(uint256 id) public view returns (string) 
-        { return polls[id].documentHash; }
-
-    function checkVote(uint256 id, address lad) public view returns (uint128) 
-        { return polls[id].votes[lad]; }
-
-    function getVoter(uint256 id, uint256 index) public view returns (address) 
-        { return polls[id].voters[index]; }
-
-    function getVoterCount(uint256 id) public view returns (uint256) 
-        { return polls[id].voters.length; }
 }
