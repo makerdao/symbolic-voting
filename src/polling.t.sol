@@ -1,8 +1,6 @@
-pragma solidity ^0.4.24;
+pragma solidity >=0.5.0;
 
-import "ds-test/test.sol";
-import "ds-token/token.sol";
-
+import {DSTest} from "ds-test/test.sol";
 import {PollingEmitter} from "./polling.sol";
 
 contract Voter {
@@ -19,8 +17,8 @@ contract PollingTest is DSTest {
         pollingEmitter = new PollingEmitter();
     }
 
-    function test_create_poll() public {
-        pollingEmitter.createPoll(1, 1, 1, "");
+    function test_can_emit_create_poll_event() public {
+        pollingEmitter.createPoll(1, "");
     }
 }
 
