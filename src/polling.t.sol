@@ -9,16 +9,22 @@ contract Voter {
 }
 
 contract PollingTest is DSTest {
-    bytes constant LOG_DATA = new bytes(1);
-
     PollingEmitter pollingEmitter;
 
     function setUp() public {
         pollingEmitter = new PollingEmitter();
     }
 
-    function test_can_emit_create_poll_event() public {
-        pollingEmitter.createPoll(1, "");
+    function test_can_log_create_poll() public {
+        pollingEmitter.createPoll(1, 2, "");
+    }
+
+    function test_can_log_withdraw_poll() public {
+        pollingEmitter.withdrawPoll(1);
+    }
+
+    function test_can_log_vote() public {
+        pollingEmitter.vote(1, 1);
     }
 }
 

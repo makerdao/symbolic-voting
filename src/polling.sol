@@ -18,31 +18,36 @@ contract PollingEvents {
     event Voted(
         address indexed voter,
         uint256 indexed pollId,
-        uint256 indexed pick,
-        bytes logData
+        uint256 indexed optionId
     );
 }
 
 contract PollingEmitter is PollingEvents {
     uint256 public npoll;
 
-    function createPoll(uint256 endBlock, string memory multiHash)
-        public
+    function createPoll(uint256 startBlock, uint256 endBlock, string calldata multiHash)
+        external
     {
-            emit PollCreated(msg.sender, npoll, block.number, endBlock, multiHash);
-            npoll++;
+        emit PollCreated(
+            msg.sender,
+            npoll,
+            startBlock > block.number ? startBlock : block.number,
+            endBlock,
+            multiHash
+        );
+        npoll++;
     }
 
     function withdrawPoll(uint256 pollId)
-        public
+        external
     {
         emit PollWithdrawn(msg.sender, pollId, block.number);
     }
 
-    function vote(uint256 pollId, uint256 pick, bytes memory logData)
-        public
+    function vote(uint256 pollId, uint256 optionId)
+        external
     {
-        emit Voted(msg.sender, pollId, pick, logData);
+        emit Voted(msg.sender, pollId, optionId);
     }
 }
 
