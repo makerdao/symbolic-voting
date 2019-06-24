@@ -3,6 +3,7 @@ pragma solidity >=0.5.0;
 contract PollingEvents {
     event PollCreated(
         address indexed creator,
+        uint256 blockCreated,
         uint256 pollId,
         uint256 startBlock,
         uint256 endBlock,
@@ -11,8 +12,8 @@ contract PollingEvents {
 
     event PollWithdrawn(
         address indexed creator,
-        uint256 pollId,
-        uint256 blockNumber
+        uint256 blockWithdrawn,
+        uint256 pollId
     );
 
     event Voted(
@@ -28,20 +29,23 @@ contract PollingEmitter is PollingEvents {
     function createPoll(uint256 startBlock, uint256 endBlock, string calldata multiHash)
         external
     {
+        require(endBlock > startBlock, "polling-invalid-poll-window");
         emit PollCreated(
             msg.sender,
+            block.number,
             npoll,
-            startBlock > block.number ? startBlock : block.number,
+            startBlock,
             endBlock,
             multiHash
         );
+        require(npoll < uint(-1), "polling-too-many-polls");
         npoll++;
     }
 
     function withdrawPoll(uint256 pollId)
         external
     {
-        emit PollWithdrawn(msg.sender, pollId, block.number);
+        emit PollWithdrawn(msg.sender, block.number, pollId);
     }
 
     function vote(uint256 pollId, uint256 optionId)
