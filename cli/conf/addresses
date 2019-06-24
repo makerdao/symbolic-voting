@@ -1,6 +1,0 @@
-#!/usr/bin/env node
-
-module.exports = {
-    kovan: "0xAaF64BFCC32d0F15873a02163e7E500671a4ffcD",
-    mainnet: "0xAaF64BFCC32d0F15873a02163e7E500671a4ffcD"
-}

@@ -1,15 +1,3 @@
 [submodule "lib/ds-test"]
 	path = lib/ds-test
 	url = https://github.com/dapphub/ds-test
-[submodule "lib/ds-token"]
-	path = lib/ds-token
-	url = https://github.com/dapphub/ds-token
-[submodule "lib/ds-math"]
-	path = lib/ds-math
-	url = https://github.com/dapphub/ds-math
-[submodule "lib/ds-guard"]
-	path = lib/ds-guard
-	url = https://github.com/dapphub/ds-guard
-[submodule "lib/ds-auth"]
-	path = lib/ds-auth
-	url = https://github.com/dapphub/ds-auth
