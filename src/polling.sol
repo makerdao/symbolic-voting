@@ -30,9 +30,8 @@ contract PollingEmitter is PollingEvents {
     function createPoll(uint256 startDate, uint256 endDate, string calldata multiHash, string calldata url)
         external
     {
-        require(endDate > now, "polling-invalid-end-date");
-        require(endDate > startDate, "polling-invalid-poll-window");
         uint256 startDate_ = startDate > now ? startDate : now;
+        require(endDate > startDate_, "polling-invalid-poll-window");
         emit PollCreated(
             msg.sender,
             block.number,
