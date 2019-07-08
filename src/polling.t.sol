@@ -16,7 +16,7 @@ contract PollingTest is DSTest {
     }
 
     function test_can_log_create_poll() public {
-        pollingEmitter.createPoll(1, 2, "");
+        pollingEmitter.createPoll(1, 2, "", "");
     }
 
     function test_can_log_withdraw_poll() public {

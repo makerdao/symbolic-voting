@@ -5,9 +5,10 @@ contract PollingEvents {
         address indexed creator,
         uint256 blockCreated,
         uint256 pollId,
-        uint256 startBlock,
-        uint256 endBlock,
-        string multiHash
+        uint256 startDate,
+        uint256 endDate,
+        string multiHash,
+        string url
     );
 
     event PollWithdrawn(
@@ -26,17 +27,20 @@ contract PollingEvents {
 contract PollingEmitter is PollingEvents {
     uint256 public npoll;
 
-    function createPoll(uint256 startBlock, uint256 endBlock, string calldata multiHash)
+    function createPoll(uint256 startDate, uint256 endDate, string calldata multiHash, string calldata url)
         external
     {
-        require(endBlock > startBlock, "polling-invalid-poll-window");
+        require(endDate > now, "polling-invalid-end-date");
+        require(endDate > startDate, "polling-invalid-poll-window");
+        uint256 startDate_ = startDate > now ? startDate : now;
         emit PollCreated(
             msg.sender,
             block.number,
             npoll,
-            startBlock,
-            endBlock,
-            multiHash
+            startDate_,
+            endDate,
+            multiHash,
+            url
         );
         require(npoll < uint(-1), "polling-too-many-polls");
         npoll++;
