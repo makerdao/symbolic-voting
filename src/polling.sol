@@ -4,7 +4,7 @@ contract PollingEvents {
     event PollCreated(
         address indexed creator,
         uint256 blockCreated,
-        uint256 pollId,
+        uint256 indexed pollId,
         uint256 startDate,
         uint256 endDate,
         string multiHash,
